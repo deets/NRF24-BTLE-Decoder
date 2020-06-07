@@ -27,7 +27,8 @@ Steve Markgraf, RTL-SDR Library - https://github.com/steve-m/librtlsdr
 
 
 */
-
+#include <zmq.h>
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
@@ -42,6 +43,8 @@ Steve Markgraf, RTL-SDR Library - https://github.com/steve-m/librtlsdr
 #endif /* defined(WIN32) */
 #include <stdlib.h> // For exit function
 #include <unistd.h>    /* for getopt */
+
+#define INLINE inline
 
 /* Global variables */
 int32_t g_threshold; // Quantization threshold
@@ -67,12 +70,12 @@ void RB_inc(void){
 /* helper functions */
 /* Quantize sample at location l by checking whether it's over the threshold */
 /* Important - takes into account the sample rate downconversion ratio */
-inline bool Quantize(int16_t l){
+INLINE bool Quantize(int16_t l){
 	return RB(l*g_srate) > g_threshold;
 }
 #define Q(l) Quantize(l)
 
-uint8_t inline SwapBits(uint8_t a){
+uint8_t INLINE SwapBits(uint8_t a){
 	return (uint8_t) (((a * 0x0802LU & 0x22110LU) | (a * 0x8020LU & 0x88440LU)) * 0x10101LU >> 16);
 }
 
@@ -180,7 +183,7 @@ bool DetectPreamble(void){
 }
 
 /* Extract byte from ring buffer starting location l */
-uint8_t inline ExtractByte(int l){
+uint8_t INLINE ExtractByte(int l){
 	uint8_t byte=0;
 	int c;
 	for (c=0;c<8;c++) byte |= Q(l+c)<<(7-c);
@@ -188,7 +191,7 @@ uint8_t inline ExtractByte(int l){
 }
 
 /* Extract count bytes from ring buffer starting location l into buffer*/
-void inline ExtractBytes(int l, uint8_t* buffer, int count){
+void INLINE ExtractBytes(int l, uint8_t* buffer, int count){
 	int t;
 	for (t=0;t<count;t++){
 		buffer[t]=ExtractByte(l+t*8);
@@ -407,6 +410,36 @@ int main (int argc, char**argv){
 	skipSamples=1000;
 	time_t start_time = time(NULL);
 
+        void *context = zmq_ctx_new ();
+        void *responder = zmq_socket (context, ZMQ_SUB);
+        int rc = zmq_connect (responder, "tcp://127.0.0.1:55555");
+    assert (rc == 0);
+    rc = zmq_setsockopt(responder, ZMQ_SUBSCRIBE, NULL, 0);
+    assert (rc == 0);
+
+    zmq_msg_t msg;
+    while (1) {
+      int rc = zmq_msg_init (&msg);
+      assert (rc == 0);
+      do
+      {
+        rc = zmq_recvmsg(responder, &msg, 0);
+      } while(rc == EAGAIN);
+      int count = zmq_msg_size(&msg);
+      if(count)
+      {
+        assert(count % 2 == 0);
+        char* buffer = zmq_msg_data(&msg);
+        for(int i=0; i < count; i += 2)
+        {
+          memcpy(&cursamp, &buffer[i], 2);
+          RB_inc();
+          RB(0)=(int)cursamp;
+          if (--skipSamples<1)if (DecodePacket(decode_type, ++samples, srate, packet_len)) skipSamples=20;
+        }
+      }
+      zmq_msg_close(&msg);
+    }
 	while(!feof(stdin) ) {
 		cursamp  = (int16_t) ( fgetc(stdin) | fgetc(stdin)<<8);
 		RB_inc();
