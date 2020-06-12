@@ -364,12 +364,15 @@ int main (int argc, char**argv){
   bool optfail=false;
   int srate=2;
   int packet_len = 0;
+  char zmq_source_address[1024];
+  bool use_zmq = false;
+
 #if defined(WIN32)
   _setmode(_fileno(stdin), _O_BINARY);
 #endif /* defined(WIN32) */
 
   printf("nrf24-btle-decoder, decode NRF24L01+ and Bluetooth Low Energy packets using RTL-SDR v0.4\n\n");
-  while ((opt = getopt(argc, argv, "t:d:l:h")) != -1) {
+  while ((opt = getopt(argc, argv, "t:d:l:z:h")) != -1) {
     switch (opt) {
     case 't':
       if (strcmp("nrf", optarg) == 0)	decode_type = 1;
@@ -393,6 +396,10 @@ int main (int argc, char**argv){
         optfail=1;
       }
       break;
+    case 'z':
+      strncpy(zmq_source_address, optarg, sizeof(zmq_source_address) - 1);
+      use_zmq = true;
+      break;
     case 'h':
     default:
       usage();
@@ -405,15 +412,13 @@ int main (int argc, char**argv){
 
   RB_init();
   g_threshold = 0;
-  bool use_zmq = true;
-
   skipSamples=RB_SIZE;
   time_t start_time = time(NULL);
   if(use_zmq)
   {
     void *context = zmq_ctx_new ();
     void *responder = zmq_socket (context, ZMQ_SUB);
-    int rc = zmq_connect (responder, "tcp://127.0.0.1:55555");
+    int rc = zmq_connect (responder, zmq_source_address);
     assert (rc == 0);
     rc = zmq_setsockopt(responder, ZMQ_SUBSCRIBE, NULL, 0);
     assert (rc == 0);
