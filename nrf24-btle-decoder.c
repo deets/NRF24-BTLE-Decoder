@@ -51,7 +51,7 @@ int32_t g_threshold; // Quantization threshold
 int g_srate; // sample rate downconvert ratio
 
 /* Ring Buffer */
-#define RB_SIZE 1000
+#define RB_SIZE 2700
 int rb_head=-1;
 int16_t *rb_buf;
 /* Init Ring Buffer */
